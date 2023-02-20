@@ -172,7 +172,7 @@ bool RevMem::FindStringTerminal( uint64_t Addr, size_t & Len ) {
   const static char nullTerminalCharacter = '\0';
   const auto pageMapEnd = std::end(pageMap);
 
-  auto pageMapItr = pageMap[pageNum];
+  auto pageMapItr = pageMap.find(pageNum);
 
   while(pageMapItr != pageMapEnd) {
      //check to see if we're about to walk off the page....
@@ -202,7 +202,7 @@ bool RevMem::FindStringTerminal( uint64_t Addr, size_t & Len ) {
       }
     }
 
-    pageMapItr = pageMap[endOfPage+1];
+    pageMapItr = pageMap.find(endOfPage+1);
   }
   return false;
 }

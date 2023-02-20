@@ -34,8 +34,7 @@ class Chdir : public virtual SystemCallInterface<RiscvArchType> {
 
     Chdir() {}
 
-    template<typename ReturnType>
-    void invoke(RevRegFile const& memregfile, RevMem const& revmemory, ReturnType & value);
+    int invoke(RevRegFile const& regFile, RevMem const& mem, RevInst const& inst);
 };
 
 } /* end namespace RevCPU */ } // end namespace SST
