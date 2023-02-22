@@ -19,23 +19,10 @@
 namespace SST { namespace RevCPU {
 
 template<typename RiscvArchType=Riscv32>
-using ChdirInterfaceType = SystemCallInterfaceCode<RiscvArchType, 49>;
+using RevChdirCode = SystemCallInterfaceCode<RiscvArchType, 49>;
 
 template<typename RiscvArchType=Riscv32>
-class Chdir : public virtual SystemCallInterface<RiscvArchType> {
-  
-    public:
-
-    using SystemCallInterfaceType = ChdirInterfaceType<RiscvArchType>;
-
-    using SystemCallCodeType = typename SystemCallInterfaceType::SystemCallCodeType;
-    
-    using SystemCallParameterInterfaceType = SystemCallParameterInterface<RiscvArchType>;
-
-    Chdir() {}
-
-    int invoke(RevRegFile const& regFile, RevMem const& mem, RevInst const& inst);
-};
+int RevChdir(RevRegFile const& regFile, RevMem const& mem, RevInst const& inst);
 
 } /* end namespace RevCPU */ } // end namespace SST
 

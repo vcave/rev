@@ -16,7 +16,7 @@
 namespace SST { namespace RevCPU {
 
 template<>
-int Chdir<Riscv32>::invoke(RevRegFile const& regFile, RevMem const& mem, RevInst const& inst) {
+int RevChdir<Riscv32>(RevRegFile const& memregfile, RevMem const& revmemory, RevInst const& inst) {
    std::size_t strlen = 0;
    memory.FindStringTerminal(dt_u32(td_u32(regFile.RV32[inst.rs1],32)), strlen);
 
@@ -30,7 +30,7 @@ int Chdir<Riscv32>::invoke(RevRegFile const& regFile, RevMem const& mem, RevInst
 }
 
 template<>
-int Chdir<Riscv64>::invoke(RevRegFile const& memregfile, RevMem const& revmemory, RevInst const& inst) {
+int RevChdir<Riscv64>(RevRegFile const& memregfile, RevMem const& revmemory, RevInst const& inst) {
    std::size_t strlen = 0;
    memory.FindStringTerminal(dt_u64(td_u64(regFile.RV64[inst.rs1],64)), strlen);
 
@@ -44,7 +44,7 @@ int Chdir<Riscv64>::invoke(RevRegFile const& memregfile, RevMem const& revmemory
 }
 
 template<>
-int Chdir<Riscv128>::invoke(RevRegFile const& memregfile, RevMem const& revmemory, RevInst const& inst) {
+int RevChdir<Riscv128>(RevRegFile const& memregfile, RevMem const& revmemory, RevInst const& inst) {
 }
 
 } /* end namespace RevCPU */ } // end namespace SST
