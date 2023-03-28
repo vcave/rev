@@ -27,7 +27,7 @@
 
 // -- Rev Headers
 #include "RevOpts.h"
-#include "RevMem.h"
+#include "RevMemPK.h"
 #include "RevLoader.h"
 #include "RevProc.h"
 

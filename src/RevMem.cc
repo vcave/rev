@@ -9,40 +9,29 @@
 //
 
 #include "../include/RevMem.h"
+#include <cstdint>
 #include <math.h>
 
-RevMem::RevMem( unsigned long MemSize, RevOpts *Opts,
-                RevMemCtrl *Ctrl, SST::Output *Output )
-  : memSize(MemSize), opts(Opts), ctrl(Ctrl), output(Output), physMem(nullptr),
+#ifdef PK
+
+RevMem::RevMem( RevOpts *Opts, RevMemCtrl *Ctrl, SST::Output *Output ){
+  pk_vm_init();
+}
+
+#else 
+RevMem::RevMem( RevOpts *Opts, RevMemCtrl *Ctrl, SST::Output *Output )
+  : memSize(0), opts(Opts), ctrl(Ctrl), output(Output), physMem(nullptr),
     stacktop(0x00ull) {
   // Note: this constructor assumes the use of the memHierarchy backend
-  physMem = new char [memSize];
-  pageSize = 262144; //Page Size (in Bytes)
-  addrShift = int(log(pageSize) / log(2.0));
-  nextPage = 0;
-
-  if( !physMem )
-    output->fatal(CALL_INFO, -1, "Error: could not allocate backing memory\n");
-
-  // zero the memory
-  for( unsigned long i=0; i<memSize; i++ ){
-    physMem[i] = 0;
-  }
-
-  // Ensure that the RevMemCtrl has access to the locally allocated
-  // physical memory.  This will read/write/modify memory using the
-  // memHierarchy notion of memory timing, ordering, etc
-  Ctrl->setPhys(physMem);
-
-  stacktop = _REVMEM_BASE_ + memSize;
-
   memStats.bytesRead = 0;
   memStats.bytesWritten = 0;
   memStats.doublesRead = 0;
   memStats.doublesWritten = 0;
   memStats.floatsRead = 0;
   memStats.floatsWritten = 0;
+    
 }
+#endif // PK
 
 RevMem::RevMem( unsigned long MemSize, RevOpts *Opts, SST::Output *Output )
   : memSize(MemSize), opts(Opts), ctrl(nullptr),output(Output),
@@ -51,11 +40,12 @@ RevMem::RevMem( unsigned long MemSize, RevOpts *Opts, SST::Output *Output )
   // allocate the backing memory
   physMem = new char [memSize];
   pageSize = 262144; //Page Size (in Bytes)
+  //pageSize = 65536; //Page Size (in Bytes)
   addrShift = int(log(pageSize) / log(2.0));
   nextPage = 0;
 
   if( !physMem )
-    output->fatal(CALL_INFO, -1, "Error: could not allocate backing memory\n");
+    output->fatal(CALL_INFO, -1, "Error: could not allocate backing memory");
 
   // zero the memory
   for( unsigned long i=0; i<memSize; i++ ){
@@ -72,18 +62,9 @@ RevMem::RevMem( unsigned long MemSize, RevOpts *Opts, SST::Output *Output )
   memStats.floatsWritten = 0;
 }
 
+
 RevMem::~RevMem(){
-  if( physMem )
-    delete[] physMem;
-}
-
-bool RevMem::outstandingRqsts(){
-  if( ctrl ){
-    return ctrl->outstandingRqsts();
-  }
-
-  // RevMemCtrl is not enabled; no outstanding requests
-  return false;
+  delete[] physMem;
 }
 
 void RevMem::HandleMemFault(unsigned width){
@@ -192,6 +173,7 @@ bool RevMem::FenceMem(){
   return true;  // base RevMem support does nothing here
 }
 
+#ifdef PK
 bool RevMem::WriteMem( uint64_t Addr, size_t Len, void *Data ){
 #ifdef _REV_DEBUG_
   std::cout << "Writing " << Len << " Bytes Starting at 0x" << std::hex << Addr << std::dec << std::endl;
@@ -214,28 +196,17 @@ bool RevMem::WriteMem( uint64_t Addr, size_t Len, void *Data ){
     adjPageNum = (physAddr + Len) >> addrShift;
     adjPhysAddr = CalcPhysAddr(adjPageNum, (physAddr + Len));
     uint32_t span = (physAddr + Len) - endOfPage;
-#ifdef _REV_DEBUG_
     std::cout << "Warning: Writing off end of page... " << std::endl;
-#endif
-    if( ctrl ){
-      ctrl->sendWRITERequest(Addr,
-                             (uint64_t)(BaseMem),
-                             Len,
-                             DataMem,
-                             0x00);
-    }else{
-      for( unsigned i=0; i< (Len-span); i++ ){
-        BaseMem[i] = DataMem[i];
-      }
+    for( unsigned i=0; i< (Len-span); i++ ){
+      BaseMem[i] = DataMem[i];
     }
     BaseMem = &physMem[adjPhysAddr];
     if( ctrl ){
       // write the memory using RevMemCtrl
-      ctrl->sendWRITERequest(Addr,
-                             (uint64_t)(BaseMem),
-                             Len,
-                             DataMem,
-                             0x00);
+      return ctrl->sendWRITERequest((uint64_t)(BaseMem),
+                                    Len,
+                                    DataMem,
+                                    0x00);
     }else{
       // write the memory using the internal RevMem model
       for( unsigned i=0; i< span; i++ ){
@@ -245,11 +216,10 @@ bool RevMem::WriteMem( uint64_t Addr, size_t Len, void *Data ){
   }else{
     if( ctrl ){
       // write the memory using RevMemCtrl
-      ctrl->sendWRITERequest(Addr,
-                             (uint64_t)(BaseMem),
-                             Len,
-                             DataMem,
-                             0x00);
+      return ctrl->sendWRITERequest((uint64_t)(BaseMem),
+                                    Len,
+                                    DataMem,
+                                    0x00);
     }else{
       // write the memory using the internal RevMem model
       for( unsigned i=0; i<Len; i++ ){
@@ -261,9 +231,13 @@ bool RevMem::WriteMem( uint64_t Addr, size_t Len, void *Data ){
   return true;
 }
 
+#endif
+
+
+#ifdef PK
 bool RevMem::ReadMem( uint64_t Addr, size_t Len, void *Data ){
 #ifdef _REV_DEBUG_
-  std::cout << "OLD READMEM: Reading " << Len << " Bytes Starting at 0x" << std::hex << Addr << std::dec << std::endl;
+  std::cout << "Reading " << Len << " Bytes Starting at 0x" << std::hex << Addr << std::dec << std::endl;
 #endif
   uint64_t pageNum = Addr >> addrShift;
   uint64_t physAddr = CalcPhysAddr(pageNum, Addr);
@@ -272,7 +246,7 @@ bool RevMem::ReadMem( uint64_t Addr, size_t Len, void *Data ){
   uint32_t adjPageNum = 0;
   uint64_t adjPhysAddr = 0;
   uint64_t endOfPage = (pageMap[pageNum].first << addrShift) + pageSize;
-  char *BaseMem = &physMem[physAddr];
+  char *BaseMem = &physMem[physAddr]; 
   char *DataMem = (char *)(Data);
   if((physAddr + Len) > endOfPage){
     adjPageNum = (physAddr + Len) >> addrShift;
@@ -281,7 +255,7 @@ bool RevMem::ReadMem( uint64_t Addr, size_t Len, void *Data ){
     for( unsigned i=0; i< (Len-span); i++ ){
       DataMem[i] = BaseMem[i];
     }
-    BaseMem = &physMem[adjPhysAddr];
+    BaseMem = &physMem[adjPhysAddr]; 
     for( unsigned i=0; i< span; i++ ){
       DataMem[i] = BaseMem[i];
     }
@@ -298,56 +272,7 @@ bool RevMem::ReadMem( uint64_t Addr, size_t Len, void *Data ){
   return true;
 }
 
-bool RevMem::ReadMem(uint64_t Addr, size_t Len, void *Target,
-                     StandardMem::Request::flags_t flags){
-#ifdef _REV_DEBUG_
-  std::cout << "NEW READMEM: Reading " << Len << " Bytes Starting at 0x" << std::hex << Addr << std::dec << std::endl;
 #endif
-  uint64_t pageNum = Addr >> addrShift;
-  uint64_t physAddr = CalcPhysAddr(pageNum, Addr);
-
-  //check to see if we're about to walk off the page....
-  uint32_t adjPageNum = 0;
-  uint64_t adjPhysAddr = 0;
-  uint64_t endOfPage = (pageMap[pageNum].first << addrShift) + pageSize;
-  char *BaseMem = &physMem[physAddr];
-  char *DataMem = (char *)(Target);
-  if((physAddr + Len) > endOfPage){
-    adjPageNum = (physAddr + Len) >> addrShift;
-    adjPhysAddr = CalcPhysAddr(adjPageNum, (physAddr + Len));
-    uint32_t span = (physAddr + Len) - endOfPage;
-    if( ctrl ){
-      ctrl->sendREADRequest(Addr, (uint64_t)(BaseMem), Len, Target, flags);
-    }else{
-      for( unsigned i=0; i< (Len-span); i++ ){
-        DataMem[i] = BaseMem[i];
-      }
-    }
-    BaseMem = &physMem[adjPhysAddr];
-    if( ctrl ){
-      ctrl->sendREADRequest(Addr, (uint64_t)(BaseMem), Len, Target, flags);
-    }else{
-      for( unsigned i=0; i< span; i++ ){
-        DataMem[i] = BaseMem[i];
-      }
-    }
-#ifdef _REV_DEBUG_
-    std::cout << "Warning: Reading off end of page... " << std::endl;
-#endif
-  }else{
-    if( ctrl ){
-      ctrl->sendREADRequest(Addr, (uint64_t)(BaseMem), Len, Target, flags);
-    }else{
-      for( unsigned i=0; i<Len; i++ ){
-        DataMem[i] = BaseMem[i];
-      }
-    }
-  }
-
-  memStats.bytesRead += Len;
-  memStats.bytesRead += Len;
-  return true;
-}
 
 uint8_t RevMem::ReadU8( uint64_t Addr ){
   uint8_t Value;

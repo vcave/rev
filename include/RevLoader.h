@@ -22,14 +22,14 @@
 #include <assert.h>
 #include <unistd.h>
 #include <stdlib.h>
-#include <stdio.h>
+#include <cstdio>
 
 // -- SST Headers
 #include <sst/core/sst_config.h>
 #include <sst/core/component.h>
 
 // -- RevCPU Headers
-#include "RevMem.h"
+#include "RevMemPK.h"
 
 #ifndef PT_LOAD
 #define PT_LOAD 1

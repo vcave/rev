@@ -13,17 +13,21 @@ set(RevCPUSrcs
   RevExt.cc
   RevFeature.cc
   RevLoader.cc
-  RevMem.cc
+  # RevMem.cc
+  RevMemPK.cc
   RevMemCtrl.cc
   RevNIC.cc
   RevOpts.cc
   RevProc.cc
+  # RevSysCalls.cc
   librevcpu.cc
   )
 
 add_library(${PROJECT_NAME} SHARED ${RevCPUSrcs})
 target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}../include)
 target_include_directories(${PROJECT_NAME} PUBLIC ${SST_INSTALL_DIR}/include)
+target_link_libraries(${PROJECT_NAME}  ${LIBPK_PATH})
+
 # target_compile_options(${PROJECT_NAME} 
 # include_directories(revcpu SHARED ${CMAKE_CURRENT_SOURCE_DIR}../include/insns)
 # include_directories(${CMAKE_CURRENT_SOURCE_DIR}../include/insns/)

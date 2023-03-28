@@ -83,7 +83,7 @@ message (LDFLAGS="${LDFLAGS}")
 #-- COMPILER OPTIONS
 #------------------------------------------------------------------------
 # TODO: This might not be necessary
-set(CMAKE_CXX_FLAGS "-O2 -Wall ${CMAKE_CXX_FLAGS} -std=c++11 -I./ ${LDFLAGS} ${REVCPU_COMPILER_MACROS}")
+set(CMAKE_CXX_FLAGS "-O2 -Wall ${CMAKE_CXX_FLAGS} -std=c++17 -I./ ${LDFLAGS} ${REVCPU_COMPILER_MACROS}")
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0 -Wall ${REVCPU_COMPILER_MACROS}")
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -Wall ${REVCPU_COMPILER_MACROS}")
 
@@ -99,6 +99,18 @@ add_definitions(${SST_DEFINITIONS})
 
 # Find Doxygen packages
 option(BUILD_DOCUMENTATION "Create and install the doxygen-ized API documentation (requires Doxygen)" ${DOXYGEN_FOUND})
+
+option(PK_DIR "RISCV-PK Install Directory")
+# TODO: 
+# -
+if(PK_DIR)
+  include_directories(${PK_DIR}/include/riscv-pk)
+  link_directories(${PK_DIR}/lib/riscv-pk)
+  set(LIBPK_PATH ${PK_DIR}/lib/riscv-pk/libpk.a)
+  set(PK_LIBS "pk")
+else()
+  set(PK_LIBS "")
+endif()
 
 if(BUILD_DOCUMENTATION)
   find_package(Doxygen)
@@ -117,9 +129,6 @@ if(BUILD_DOCUMENTATION)
 
   install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/doxygen/html DESTINATION share/doc)
   # install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/doxygen/man DESTINATION share/man) # NOTE: No 
-
-
-
 
 endif()
   # find_package(DOXYGEN Doxygen)

@@ -1,5 +1,5 @@
 //
-// _RevMem_h_
+// _RevMemPK_h_
 //
 // Copyright (C) 2017-2023 Tactical Computing Laboratories, LLC
 // All Rights Reserved
@@ -8,17 +8,11 @@
 // See LICENSE in the top level directory for licensing details
 //
 
-#ifndef _SST_REVCPU_REVMEM_H_
-#define _SST_REVCPU_REVMEM_H_
+#ifndef _SST_REVCPU_REVMEMPK_H_
+#define _SST_REVCPU_REVMEMPK_H_
 
 // -- C++ Headers
 #include <ctime>
-#include <vector>
-#include <algorithm>
-#include <stdio.h>
-#include <stdlib.h>
-#include <time.h>
-#include <random>
 
 // -- SST Headers
 #include <sst/core/sst_config.h>
@@ -27,6 +21,8 @@
 // -- RevCPU Headers
 #include "RevOpts.h"
 #include "RevMemCtrl.h"
+
+#include "pk.h"
 
 #ifndef _REVMEM_BASE_
 #define _REVMEM_BASE_ 0x00000000
@@ -140,21 +136,21 @@ namespace SST {
     RevMemStats memStats;
 
     private:
-      unsigned long memSize;    ///< RevMem: size of the target memory
+      // unsigned long memSize;    ///< RevMem: size of the target memory
       RevOpts *opts;            ///< RevMem: options object
       RevMemCtrl *ctrl;         ///< RevMem: memory controller object
       SST::Output *output;      ///< RevMem: output handler
 
-      uint64_t CalcPhysAddr(uint64_t pageNum, uint64_t Addr);
+      // uint64_t CalcPhysAddr(uint64_t pageNum, uint64_t Addr);
 
-      char *physMem;                          ///< RevMem: memory container
+      // char *physMem;                          ///< RevMem: memory container
 
       //c++11 should guarentee that these are all zero-initializaed
-      std::map<uint64_t, std::pair<uint32_t, bool>> pageMap;   ///< RevMem: map of logical to pair<physical addresses, allocated>
-      uint32_t                                      pageSize;  ///< RevMem: size of allocated pages
-      uint32_t                                      addrShift; ///< RevMem: Bits to shift to caclulate page of address 
-      uint32_t                                      nextPage;  ///< RevMem: next physical page to be allocated. Will result in index 
-                                                                    /// nextPage * pageSize into physMem
+      // std::map<uint64_t, std::pair<uint32_t, bool>> pageMap;   ///< RevMem: map of logical to pair<physical addresses, allocated>
+      // uint32_t                                      pageSize;  ///< RevMem: size of allocated pages
+      // uint32_t                                      addrShift; ///< RevMem: Bits to shift to caclulate page of address 
+      // uint32_t                                      nextPage;  ///< RevMem: next physical page to be allocated. Will result in index 
+      //                                                               /// nextPage * pageSize into physMem
 
       uint64_t stacktop;        ///< RevMem: top of the stack
 
