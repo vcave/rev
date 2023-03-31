@@ -32,6 +32,7 @@ namespace SST{
                         RevMem *M, RevInst Inst) {
         // c.swsp rs2, $imm = sw rs2, x2, $imm
         Inst.rs1  = 2;
+        ZEXT(Inst.imm, ((Inst.imm&0b11111))*8, 32);
         Inst.imm = ((Inst.imm&0b11111)*8);
 
         return sd(F,R,M,Inst);
