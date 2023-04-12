@@ -141,7 +141,7 @@ namespace SST{
       PanExec *PExec;           ///< RevProc: PAN exeuction context
       RevProcStats Stats;       ///< RevProc: collection of performance stats
       RevPrefetcher *sfetch;    ///< RevProc: stream instruction prefetcher
-
+  
 public:
       RevRegFile RegFile[_REV_THREAD_COUNT_];      ///< RevProc: register file
 private:

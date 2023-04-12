@@ -12,9 +12,10 @@
 #include <math.h>
 
 RevMem::RevMem( unsigned long MemSize, RevOpts *Opts,
-                RevMemCtrl *Ctrl, SST::Output *Output )
+                RevMemCtrl *Ctrl, SST::Output *Output,
+                unsigned numCores )
   : memSize(MemSize), opts(Opts), ctrl(Ctrl), output(Output), physMem(nullptr),
-    stacktop(0x00ull) {
+    stacktop(0x00ull), ProcessTable(numCores) {
   // Note: this constructor assumes the use of the memHierarchy backend
   physMem = new char [memSize];
   pageSize = 262144; //Page Size (in Bytes)
@@ -44,9 +45,9 @@ RevMem::RevMem( unsigned long MemSize, RevOpts *Opts,
   memStats.floatsWritten = 0;
 }
 
-RevMem::RevMem( unsigned long MemSize, RevOpts *Opts, SST::Output *Output )
+RevMem::RevMem( unsigned long MemSize, RevOpts *Opts, SST::Output *Output, unsigned numCores )
   : memSize(MemSize), opts(Opts), ctrl(nullptr),output(Output),
-    physMem(nullptr), stacktop(0x00ull) {
+    physMem(nullptr), stacktop(0x00ull), ProcessTable(numCores) {
 
   // allocate the backing memory
   physMem = new char [memSize];

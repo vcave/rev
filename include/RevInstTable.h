@@ -8,6 +8,8 @@
 // See LICENSE in the top level directory for licensing details
 //
 
+#pragma once 
+
 #ifndef _SST_REVCPU_REVINSTTABLE_H_
 #define _SST_REVCPU_REVINSTTABLE_H_
 

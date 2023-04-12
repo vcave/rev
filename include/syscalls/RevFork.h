@@ -10,8 +10,16 @@ struct RevFork {
   
   template<typename RiscvArchType>
   static int ECall(RevRegFile& regFile, RevMem& mem, RevInst& inst) {
+
     std::cout << "INSIDE FORK" << std::endl;
-    pid_t rc = fork();
+    if constexpr (std::is_same<RiscvArchType, Riscv32>::value){
+
+    }
+    
+    else if (std::is_same<RiscvArchType, Riscv64>::value){
+      mem
+    
+    // pid_t rc = fork();
     return rc;
   }
 };

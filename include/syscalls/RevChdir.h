@@ -12,7 +12,6 @@ struct RevChdir{
   // ecall (a7 = 49) -> chdir
   static const int value = 49; 
   
-  
   template<typename RiscvArchType>
   static int ECall(RevRegFile& regFile, RevMem& mem, RevInst& inst) {
     if constexpr (std::is_same<RiscvArchType, Riscv32>::value){

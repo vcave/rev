@@ -7,6 +7,7 @@
 //
 // See LICENSE in the top level directory for licensing details
 //
+#pragma once
 
 #ifndef _SST_REVCPU_REVMEM_H_
 #define _SST_REVCPU_REVMEM_H_
@@ -28,7 +29,8 @@
 // -- RevCPU Headers
 #include "RevOpts.h"
 #include "RevMemCtrl.h"
-#include "RevProc.h"
+#include "RevProcCtx.h"
+#include "RevProcessTable.h"
 
 #ifndef _REVMEM_BASE_
 #define _REVMEM_BASE_ 0x00000000
@@ -36,8 +38,10 @@
 
 #define REVMEM_FLAGS(x) ((StandardMem::Request::flags_t)(x))
 
-namespace SST::RevCPU {
-  class RevMem;
+namespace SST {
+  namespace RevCPU {
+    class RevMem;
+  }
 }
 
 using namespace SST::RevCPU;
@@ -48,10 +52,10 @@ namespace SST {
     class RevMem {
     public:
       /// RevMem: standard constructor
-      RevMem( unsigned long MemSize, RevOpts *Opts, SST::Output *Output );
+      RevMem( unsigned long MemSize, RevOpts *Opts, SST::Output *Output, unsigned numCores);
 
       /// RevMem: standard memory controller constructor
-      RevMem( unsigned long MemSize, RevOpts *Opts, RevMemCtrl *Ctrl, SST::Output *Output );
+      RevMem( unsigned long MemSize, RevOpts *Opts, RevMemCtrl *Ctrl, SST::Output *Output, unsigned numCores );
 
       /// RevMem: standard destructor
       ~RevMem();
@@ -65,19 +69,21 @@ namespace SST {
       /// RevMem: handle memory injection
       void HandleMemFault(unsigned width);
 
+
       /// RevMem: Set Rev Proc Ctx
       void StoreProcCtx(RevProcCtx& Ctx){
         // Stack Pointer
         Ctx.ParentSP = GetStackTop();
       }
-  
+
       void LoadProcCtx(const RevProcCtx& Ctx){
         // Stack Pointer
         SetStackTop(Ctx.ParentSP);
       }
 
+      std::vector<RevProcessTable> ProcessTable;
 private:
-  
+
       /// RevMem: get the stack_top address
       uint64_t GetStackTop() { return stacktop; }
 

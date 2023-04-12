@@ -14,7 +14,6 @@
 #define _SST_REVCPU_REVPROCESSTABLE_H_
 
 #include "RevProc.h"
-#include "RevProcessTable.h"
 #include "RevProcCtx.h"
 
 class RevProcessTable {

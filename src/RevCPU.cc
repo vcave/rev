@@ -191,7 +191,7 @@ RevCPU::RevCPU( SST::ComponentId_t id, SST::Params& params )
   const unsigned long memSize = params.find<unsigned long>("memSize", 1073741824);
   EnableMemH = params.find<bool>("enable_memH", 0);
   if( !EnableMemH ){
-    Mem = new RevMem( memSize, Opts,  &output );
+    Mem = new RevMem( memSize, Opts,  &output, numCores);
     if( !Mem )
       output.fatal(CALL_INFO, -1, "Error: failed to initialize the memory object\n" );
   }else{
@@ -202,7 +202,7 @@ RevCPU::RevCPU( SST::ComponentId_t id, SST::Params& params )
     if( !Ctrl )
       output.fatal(CALL_INFO, -1, "Error : failed to inintialize the memory controller subcomponent\n");
 
-    Mem = new RevMem( memSize, Opts, Ctrl, &output );
+    Mem = new RevMem( memSize, Opts, Ctrl, &output, numCores );
     if( !Mem )
       output.fatal(CALL_INFO, -1, "Error : failed to initialize the memory object\n" );
 
