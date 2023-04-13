@@ -14,11 +14,13 @@
 #include "../RevInstTable.h"
 #include "../RevExt.h"
 #include "../RevSysCalls.h"
+#include "../RevMem.h"
 
 using namespace SST::RevCPU;
 
 namespace SST{
   namespace RevCPU{
+
     class RV32I : public RevExt {
 
       // Compressed instructions

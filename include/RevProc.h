@@ -44,7 +44,6 @@
 #include "RevInstTables.h"
 #include "PanExec.h"
 #include "RevPrefetcher.h"
-#include "RevProcCtx.h"
 
 #define _PAN_FWARE_JUMP_            0x0000000000010000
 
@@ -265,8 +264,8 @@ public:
       uint16_t GetThreadID();
 
       /// RevProc: Context switching utils
-      void LoadCtx(RevMem& Mem, const RevProcCtx& ProcCtx);
-      void SaveCtx(const RevMem& Mem, RevProcCtx& ProcCtx);
+//      void LoadCtx(RevMem& Mem, const RevProcCtx& ProcCtx);
+//      void SaveCtx(const RevMem& Mem, RevProcCtx& ProcCtx);
 
 private:
 

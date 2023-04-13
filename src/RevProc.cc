@@ -1693,6 +1693,7 @@ uint16_t RevProc::GetThreadID(){
   return nextID;
 }
 
+/*
 void RevProc::LoadCtx(RevMem& Mem, const RevProcCtx& ProcCtx){
   // Load reg file
   RegFile[ProcCtx.tID] = ProcCtx.ParentRegFile;
@@ -1713,7 +1714,7 @@ void RevProc::SaveCtx(const RevMem& Mem, RevProcCtx& ProcCtx){
   // Stack Pointer
   Mem.StoreProcCtx(ProcCtx);
 }
-
+*/
 
 bool RevProc::ClockTick( SST::Cycle_t currentCycle ){
   bool rtn = false;

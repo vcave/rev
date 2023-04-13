@@ -18,12 +18,12 @@ set(RevCPUSrcs
   RevNIC.cc
   RevOpts.cc
   RevProc.cc
-  RevProcessTable.cc
   RevSysCalls.cc
   librevcpu.cc
   RevPrefetcher.cc
   )
 
+#  RevProcessTable.cc
 add_library(revcpu SHARED ${RevCPUSrcs})
 target_include_directories(revcpu PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}../include)
 target_include_directories(revcpu PUBLIC ${SST_INSTALL_DIR}/include)

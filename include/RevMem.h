@@ -7,8 +7,6 @@
 //
 // See LICENSE in the top level directory for licensing details
 //
-#pragma once
-
 #ifndef _SST_REVCPU_REVMEM_H_
 #define _SST_REVCPU_REVMEM_H_
 
@@ -29,8 +27,7 @@
 // -- RevCPU Headers
 #include "RevOpts.h"
 #include "RevMemCtrl.h"
-#include "RevProcCtx.h"
-#include "RevProcessTable.h"
+#include "RevProc.h"
 
 #ifndef _REVMEM_BASE_
 #define _REVMEM_BASE_ 0x00000000
@@ -48,6 +45,57 @@ using namespace SST::RevCPU;
 
 namespace SST {
   namespace RevCPU {
+
+    class RevProcCtx {
+
+      public:
+
+      RevProcCtx() = default;
+ 
+      RevProcCtx(uint16_t tid,  uint16_t pid, uint64_t procStartAddr,  RevRegFile& parentRegFile,  uint64_t parentSP)
+        : tID(tid), pID(pid), ProcStartAddr(procStartAddr),
+          ParentRegFile(parentRegFile), ParentSP(parentSP)
+      {
+        std::copy_n(parentRegFile.RV32, _REV_NUM_REGS_, ParentRegFile.RV32);    ///< RevRegFile: RV32I register file
+        std::copy_n(parentRegFile.RV64,_REV_NUM_REGS_, ParentRegFile.RV64);    ///< RevRegFile: RV64I register file
+        std::copy_n(parentRegFile.SPF, _REV_NUM_REGS_, ParentRegFile.SPF);    ///< RevRegFile: SPFI register file
+        std::copy_n(parentRegFile.DPF, _REV_NUM_REGS_, ParentRegFile.DPF);    ///< RevRegFile: DPFI register file
+
+        std::copy_n(parentRegFile.RV32_Scoreboard,_REV_NUM_REGS_, ParentRegFile.RV32_Scoreboard);    ///< RevRegFile: RV32_ScoreboardI register file
+        std::copy_n(parentRegFile.RV64_Scoreboard,_REV_NUM_REGS_, ParentRegFile.RV64_Scoreboard);    ///< RevRegFile: RV64_ScoreboardI register file
+        std::copy_n(parentRegFile.SPF_Scoreboard, _REV_NUM_REGS_, ParentRegFile.SPF_Scoreboard);    ///< RevRegFile: SPF_ScoreboardI register file
+        std::copy_n(parentRegFile.DPF_Scoreboard, _REV_NUM_REGS_, ParentRegFile.DPF_Scoreboard);    ///< RevRegFile: DPF_ScoreboardI register file
+      }
+
+      uint16_t tID; 
+      uint16_t pID; 
+      uint64_t ProcStartAddr; 
+      RevRegFile ParentRegFile; 
+      uint64_t ParentSP; 
+    };
+ 
+    class RevProcessTable {
+      public:
+        RevProcessTable() :
+           PIDCtr(0), ActivePIDs(), InactivePIDs(), Table(), PrevPID(-1), CurrPID(-1) {}
+
+        const static uint32_t PID_MAX = 4194304;
+        uint32_t PIDCtr;
+        std::vector<uint32_t> ActivePIDs;
+        std::vector<uint32_t> InactivePIDs;
+        std::map<uint16_t, RevProcCtx> Table;
+        uint16_t PrevPID;
+        uint16_t CurrPID;
+
+      private:
+        void UpdatePIDs(uint16_t pid);
+        uint16_t GetPID();
+        uint16_t CreateProcess( RevLoader* Loader, RevMem* Mem, RevProc* Proc );
+        bool GetProcCtx( uint16_t pid, RevProcCtx* Ctx );
+        bool SwitchCtx( RevLoader* Loader, RevMem* Mem, RevProc* Proc, uint16_t FromPID, uint16_t ToPID);
+        bool PruneCtx( const uint16_t pid );
+        bool RetirePID( uint16_t pid );
+    }; 
 
     class RevMem {
     public:
@@ -69,7 +117,6 @@ namespace SST {
       /// RevMem: handle memory injection
       void HandleMemFault(unsigned width);
 
-
       /// RevMem: Set Rev Proc Ctx
       void StoreProcCtx(RevProcCtx& Ctx){
         // Stack Pointer
@@ -82,7 +129,6 @@ namespace SST {
       }
 
       std::vector<RevProcessTable> ProcessTable;
-private:
 
       /// RevMem: get the stack_top address
       uint64_t GetStackTop() { return stacktop; }
