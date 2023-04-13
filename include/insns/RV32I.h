@@ -14,7 +14,6 @@
 #include "../RevInstTable.h"
 #include "../RevExt.h"
 #include "../RevSysCalls.h"
-#include "../RevMem.h"
 
 using namespace SST::RevCPU;
 

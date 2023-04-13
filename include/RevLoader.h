@@ -41,7 +41,6 @@
 
 namespace SST::RevCPU {
   class RevLoader;
-  class RevMem;
 }
 
 using namespace SST::RevCPU;
