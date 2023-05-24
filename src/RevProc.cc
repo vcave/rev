@@ -2146,25 +2146,28 @@ bool RevProc::ClockTick( SST::Cycle_t currentCycle ){
       /* 
        * The following block is used for 
        */
-      uint32_t ParentPID = ThreadTable.at(ActivePIDs.at(HartToExec))->GetParentPID();
-      if(ParentPID != 0 ){
-        done = false;
-        std::cout << "============================================ " << std::endl;
-        std::cout << "THREAD EVENT:" << std::endl;
-        std::cout << " - PID " << ActivePIDs.at(HartToExec) << " COMPLETED EXECUTION" << std::endl;
-        std::cout << " - NewPID: " << ActivePIDs.at(HartToExec) << std::endl;
-        std::cout << "============================================ "<< std::endl;
-        CtxSwitchAlert(ParentPID);
-        SwapToParent = true;
-        ThreadTable.at(ActivePIDs.at(HartToExec))->SetState(ThreadState::Dead);
-      } else {
-        done = true;
-      }
+      if( HartToExec != _REV_INVALID_HART_ID_ ){
+        if( ActivePIDs.size() > (HartToExec) ) {
+          uint32_t CurrPID = ActivePIDs.at(HartToExec);
+          uint32_t ParentPID = ThreadTable.at(ActivePIDs.at(HartToExec))->GetParentPID();
+          output->verbose(CALL_INFO, 2, 0,
+                        "Thread %u finished execution. Switching to its parent PID = %u", CurrPID, ParentPID);
+          if(ParentPID != 0 ){
+            done = false;
+            output->verbose(CALL_INFO, 2, 0, "Switching from thread with PID = %u to PID = %u\n", ActivePIDs.at(HartToExec), ParentPID);
+            CtxSwitchAlert(ParentPID);
+            SwapToParent = true;
+            ThreadTable.at(ActivePIDs.at(HartToExec))->SetState(ThreadState::Dead);
+          } else {
+            done = true;
+          }
+        }
       }
 
       // determine if we have any outstanding memory requests
       if( mem->outstandingRqsts() ){
         done = false;
+      }
       }
       if( done ){
         // we are really done, return
