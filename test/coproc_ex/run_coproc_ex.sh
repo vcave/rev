@@ -11,4 +11,4 @@ if [ -f ${REV_EXE} ]; then
 else
   echo "Test COPROC: File ${REV_EXE} not found - likely build failed"
   exit 1
-fi 
+fi

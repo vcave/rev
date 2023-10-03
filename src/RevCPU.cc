@@ -9,9 +9,12 @@
 //
 
 #include "../include/RevCPU.h"
+#include "RevMem.h"
+#include "RevThread.h"
 #include <cmath>
 
 using namespace SST::RevCPU;
+using MemSegment = RevMem::MemSegment;
 
 const char splash_msg[] = "\
 \n\
@@ -155,9 +158,10 @@ RevCPU::RevCPU( SST::ComponentId_t id, const SST::Params& params )
     if( !PNic->IsHost() ){
       // TODO: Use std::nothrow to return null instead of throwing std::bad_alloc
       PExec = new PanExec();
-      if( PExec == nullptr )
-      for( unsigned i=0; i<Procs.size(); i++ ){
-        Procs[i]->SetExecCtx(PExec);
+      if( PExec == nullptr ){
+        for( size_t i=0; i<Procs.size(); i++ ){
+          Procs[i]->SetExecCtx(PExec);
+        }
       }
       RevokeHasArrived = false;
     }else{
@@ -236,28 +240,65 @@ RevCPU::RevCPU( SST::ComponentId_t id, const SST::Params& params )
 
   Opts->SetArgs(Loader->GetArgv());
 
+  AssignedThreads.resize(numCores);
   EnableCoProc = params.find<bool>("enableCoProc", 0);
   if(EnableCoProc){
     // Create the co-processor objects
     for( unsigned i=0; i<numCores; i++){
       RevCoProc* CoProc = loadUserSubComponent<RevCoProc>("co_proc");
-        if (!CoProc) {
-          output.fatal(CALL_INFO, -1, "Error : failed to inintialize the co-processor subcomponent\n");
-        }
-        CoProcs.push_back(CoProc);
+      if (!CoProc) {
+        output.fatal(CALL_INFO, -1, "Error : failed to inintialize the co-processor subcomponent\n");
+      }
+      CoProcs.push_back(CoProc);
     }
     // Create the processor objects
     Procs.reserve(Procs.size() + numCores);
     for( unsigned i=0; i<numCores; i++ ){
-      Procs.push_back( new RevProc( i, Opts, Mem, Loader, CoProcs[i], &output ) );
+      Procs.push_back( new RevProc( i, Opts, Mem, Loader, AssignedThreads.at(i), this->GetNewTID(), CoProcs[i], &output ) );
     }
   }else{
     // Create the processor objects
     Procs.reserve(Procs.size() + numCores);
     for( unsigned i=0; i<numCores; i++ ){
-      Procs.push_back( new RevProc( i, Opts, Mem, Loader, NULL, &output ) );
+      Procs.push_back( new RevProc( i, Opts, Mem, Loader, AssignedThreads.at(i), this->GetNewTID(), NULL, &output ) );
     }
   }
+
+  // Initial thread setup
+  uint32_t MainThreadID = id+1; // Prevents having MainThreadID == 0 which is reserved for INVALID
+
+  // set the pc
+  uint64_t StartAddr = 0x00ull;
+  std::string StartSymbol = "main";
+  if( StartAddr == 0x00ull ){
+    // if( !Opts->GetStartSymbol( id, StartSymbol ) ){
+    //   output.fatal(CALL_INFO, -1,
+    //                 "Error: failed to init the start symbol address for main thread=\n");
+    // }
+    StartAddr = Loader->GetSymbolAddr(StartSymbol);
+  }
+  if( StartAddr == 0x00ull ){
+    // load "main" symbol
+    StartAddr = Loader->GetSymbolAddr("main");
+    if( StartAddr == 0x00ull ){
+      output.fatal(CALL_INFO, -1,
+                   "Error: failed to auto discover address for <main> for main thread\n");
+    }
+  }
+
+  std::shared_ptr<RevThread> MainThread = std::make_shared<RevThread>(MainThreadID,                    // ThreadID
+                                                                      __INVALID_TID__,                 // Parent ThreadID
+                                                                      Mem->GetStackTop(),              // Stack Pointer
+                                                                      StartAddr,                       // PC
+                                                                      Mem->GetThreadMemSegs().front(), // ThreadMemSeg pointer
+                                                                      Procs[0]->GetRevFeature());      // RevFeature
+
+
+  InitThread(MainThread);
+
+  output.verbose(CALL_INFO, 11, 0, "Main thread initialized %s", MainThread->to_string().c_str());
+
+  SetupArgs(MainThreadID, Procs[0]->GetRevFeature());
 
   // setup the per-proc statistics
   TotalCycles.reserve(TotalCycles.size() + numCores);
@@ -292,7 +333,7 @@ RevCPU::RevCPU( SST::ComponentId_t id, const SST::Params& params )
     // setup the PAN target device execution context
     if( !PNic->IsHost() ){
       PExec = new PanExec();
-      for( unsigned i=0; i<Procs.size(); i++ ){
+      for( size_t i=0; i<Procs.size(); i++ ){
         Procs[i]->SetExecCtx(PExec);
       }
     }
@@ -301,7 +342,7 @@ RevCPU::RevCPU( SST::ComponentId_t id, const SST::Params& params )
   // Create the completion array
   Enabled = new bool [numCores];
   for( unsigned i=0; i<numCores; i++ ){
-    Enabled[i] = true;
+    Enabled[i] = false;
   }
 
   {
@@ -352,6 +393,7 @@ RevCPU::~RevCPU(){
 
   // delete the clock handler object
   delete ClockHandler;
+
 }
 
 void RevCPU::DecodeFaultWidth(const std::string& width){
@@ -396,13 +438,13 @@ void RevCPU::DecodeFaultCodes(const std::vector<std::string>& faults){
 
 void RevCPU::initNICMem(){
   output.verbose(CALL_INFO, 1, 0, "Initializing NIC memory.\n");
-  #if 1
+#if 1
   // See PanAddr.h
   Mem->AddMemSegAt(_PAN_COMPLETION_ADDR_, sizeof(uint64_t));
   Mem->AddMemSegAt(_PAN_COMPLETION_ADDR_, sizeof(MBoxEntry) * _PAN_RDMA_MAX_ENTRIES_);
   Mem->AddMemSegAt(_PAN_PE_TABLE_ADDR_,   sizeof(PEMap) * _PAN_PE_TABLE_MAX_ENTRIES_);
   Mem->AddMemSegAt(_PAN_XFER_BUF_ADDR_,   sizeof(PRTIME_XFER) * _PAN_XFER_BUF_);
-  #endif
+#endif
   // init all the entries to -1
   uint64_t ptr = _PAN_PE_TABLE_ADDR_;
   uint64_t host = 2;
@@ -432,7 +474,7 @@ void RevCPU::initNICMem(){
     ptr += 8;
     host = PNic->IsRemoteHost(id);
     output.verbose(CALL_INFO, 4, 0, "--> REMOTE_PE = %" PRId64 "; IS_HOST = %" PRIu64 "\n",
-                  id, host);
+                   id, host);
     Mem->Write(0, ptr, host);
     ptr += 8;
   }
@@ -630,7 +672,7 @@ void RevCPU::PANHandleSuccess(panNicEvent *event){
 void RevCPU::PANHandleFailed(panNicEvent *event){
   // search for the tag in the tag list
   std::pair<uint8_t, int> Entry = std::make_pair(event->getTag(),
-                                                event->getSrc());
+                                                 event->getSrc());
   auto it = std::find(TrackTags.begin(), TrackTags.end(), Entry);
   if( it == TrackTags.end() ){
     // nothing found, raise an error
@@ -1570,11 +1612,11 @@ bool RevCPU::processPANMemRead(){
   // send responses as necessary
 
   // decrement all the counts
-  int i = 0;
+  // int i = 0;
   for( auto &it : ReadQueue ){
     if( std::get<2>(it) != 0 )
       std::get<2>(it)--;
-    i++;
+    // i++;
   }
 
   // walk all the nodes and see which requests need to be flushed
@@ -1661,7 +1703,7 @@ bool RevCPU::PANConvertRDMAtoEvent(uint64_t Addr, panNicEvent *event){
   case 0b10:
   default:
     output.fatal(CALL_INFO, -1,
-                "Error: Bad opcode type from RDMA Mailbox Command: Opc=%d\n", Opcode);
+                 "Error: Bad opcode type from RDMA Mailbox Command: Opc=%d\n", Opcode);
     break;
   }
 
@@ -1676,7 +1718,7 @@ bool RevCPU::PANConvertRDMAtoEvent(uint64_t Addr, panNicEvent *event){
     DataAddr = Mem->ReadU64(Addr+16);
     if( !event->buildSyncGet(Token, Tag, CmdAddr, Size) )
       output.fatal(CALL_INFO, -1,
-                  "Error: could not build RDMA SyncGet; Tag=%d\n", Tag);
+                   "Error: could not build RDMA SyncGet; Tag=%d\n", Tag);
     TrackGets.push_back(std::make_tuple(Tag, DataAddr, Size));
     break;
   case panNicEvent::SyncPut:
@@ -1692,7 +1734,7 @@ bool RevCPU::PANConvertRDMAtoEvent(uint64_t Addr, panNicEvent *event){
     if( !event->buildSyncPut(Token, Tag, CmdAddr, Size, Data) ){
       delete[] Data;
       output.fatal(CALL_INFO, -1,
-                  "Error: could not build RDMA SyncPut; Tag=%d\n", Tag);
+                   "Error: could not build RDMA SyncPut; Tag=%d\n", Tag);
     }
     delete[] Data;
     break;
@@ -1701,7 +1743,7 @@ bool RevCPU::PANConvertRDMAtoEvent(uint64_t Addr, panNicEvent *event){
     DataAddr = Mem->ReadU64(Addr+16);
     if( !event->buildAsyncGet(Token, Tag, CmdAddr, Size) )
       output.fatal(CALL_INFO, -1,
-                  "Error: could not build RDMA AsyncGet; Tag=%d\n", Tag);
+                   "Error: could not build RDMA AsyncGet; Tag=%d\n", Tag);
     TrackGets.push_back(std::make_tuple(Tag, DataAddr, Size));
     break;
   case panNicEvent::AsyncPut:
@@ -1717,7 +1759,7 @@ bool RevCPU::PANConvertRDMAtoEvent(uint64_t Addr, panNicEvent *event){
     if( !event->buildAsyncPut(Token, Tag, CmdAddr, Size, Data) ){
       delete[] Data;
       output.fatal(CALL_INFO, -1,
-                  "Error: could not build RDMA AsyncPut; Tag=%d\n", Tag);
+                   "Error: could not build RDMA AsyncPut; Tag=%d\n", Tag);
     }
     delete[] Data;
     break;
@@ -1726,7 +1768,7 @@ bool RevCPU::PANConvertRDMAtoEvent(uint64_t Addr, panNicEvent *event){
     DataAddr = Mem->ReadU64(Addr+16);
     if( !event->buildSyncStreamGet(Token, Tag, CmdAddr, Size) )
       output.fatal(CALL_INFO, -1,
-                  "Error: could not build RDMA SyncStreamGet; Tag=%d\n", Tag);
+                   "Error: could not build RDMA SyncStreamGet; Tag=%d\n", Tag);
     TrackGets.push_back(std::make_tuple(Tag, DataAddr, Size));
     break;
   case panNicEvent::SyncStreamPut:
@@ -1742,7 +1784,7 @@ bool RevCPU::PANConvertRDMAtoEvent(uint64_t Addr, panNicEvent *event){
     if( !event->buildSyncStreamPut(Token, Tag, CmdAddr, Size, Data) ){
       delete[] Data;
       output.fatal(CALL_INFO, -1,
-                  "Error: could not build RDMA SyncStreamPut; Tag=%d\n", Tag);
+                   "Error: could not build RDMA SyncStreamPut; Tag=%d\n", Tag);
     }
     delete[] Data;
     break;
@@ -1751,7 +1793,7 @@ bool RevCPU::PANConvertRDMAtoEvent(uint64_t Addr, panNicEvent *event){
     DataAddr = Mem->ReadU64(Addr+16);
     if( !event->buildAsyncStreamGet(Token, Tag, CmdAddr, Size) )
       output.fatal(CALL_INFO, -1,
-                  "Error: could not build RDMA AsyncStreamGet; Tag=%d\n", Tag);
+                   "Error: could not build RDMA AsyncStreamGet; Tag=%d\n", Tag);
     TrackGets.push_back(std::make_tuple(Tag, DataAddr, Size));
     break;
   case panNicEvent::AsyncStreamPut:
@@ -1767,7 +1809,7 @@ bool RevCPU::PANConvertRDMAtoEvent(uint64_t Addr, panNicEvent *event){
     if( !event->buildAsyncStreamPut(Token, Tag, CmdAddr, Size, Data) ){
       delete[] Data;
       output.fatal(CALL_INFO, -1,
-                  "Error: could not build RDMA AsyncStreamPut; Tag=%d\n", Tag);
+                   "Error: could not build RDMA AsyncStreamPut; Tag=%d\n", Tag);
     }
     delete[] Data;
     break;
@@ -1775,27 +1817,27 @@ bool RevCPU::PANConvertRDMAtoEvent(uint64_t Addr, panNicEvent *event){
     CmdAddr = Mem->ReadU64(Addr+8);
     if( !event->buildExec(Token, Tag, CmdAddr) )
       output.fatal(CALL_INFO, -1,
-                  "Error: could not build RDMA Exec; Tag=%d\n", Tag);
+                   "Error: could not build RDMA Exec; Tag=%d\n", Tag);
     break;
   case panNicEvent::Status:
     if( !event->buildStatus(Token, Tag, (uint16_t)(Size)) )
       output.fatal(CALL_INFO, -1,
-                  "Error: could not build RDMA Status; Tag=%d\n", Tag);
+                   "Error: could not build RDMA Status; Tag=%d\n", Tag);
     break;
   case panNicEvent::Cancel:
     if( !event->buildCancel(Token, Tag, (uint16_t)(Size)) )
       output.fatal(CALL_INFO, -1,
-                  "Error: could not build RDMA Cancel; Tag=%d\n", Tag);
+                   "Error: could not build RDMA Cancel; Tag=%d\n", Tag);
     break;
   case panNicEvent::Reserve:
     if( !event->buildReserve(Token, Tag) )
       output.fatal(CALL_INFO, -1,
-                  "Error: could not build RDMA Reserve; Tag=%d\n", Tag);
+                   "Error: could not build RDMA Reserve; Tag=%d\n", Tag);
     break;
   case panNicEvent::Revoke:
     if( !event->buildRevoke(Token, Tag) )
       output.fatal(CALL_INFO, -1,
-                  "Error: could not build RDMA Revoke; Tag=%d\n", Tag);
+                   "Error: could not build RDMA Revoke; Tag=%d\n", Tag);
     CmdAddr = _PAN_COMPLETION_ADDR_;
     TmpData = 0x01;
     Mem->WriteMem(0, CmdAddr, 8, &TmpData);
@@ -1803,56 +1845,56 @@ bool RevCPU::PANConvertRDMAtoEvent(uint64_t Addr, panNicEvent *event){
   case panNicEvent::Halt:
     if( !event->buildHalt(Token, Tag, (uint16_t)(Size)) )
       output.fatal(CALL_INFO, -1,
-                  "Error: could not build RDMA Halt; Tag=%d\n", Tag);
+                   "Error: could not build RDMA Halt; Tag=%d\n", Tag);
     break;
   case panNicEvent::Resume:
     if( !event->buildResume(Token, Tag) )
       output.fatal(CALL_INFO, -1,
-                  "Error: could not build RDMA Resume; Tag=%d\n", Tag);
+                   "Error: could not build RDMA Resume; Tag=%d\n", Tag);
     break;
   case panNicEvent::ReadReg:
     CmdAddr = Mem->ReadU64(Addr+8);
     if( !event->buildReadReg(Token, Tag, Size, CmdAddr) )
       output.fatal(CALL_INFO, -1,
-                  "Error: could not build RDMA ReadReg; Tag=%d\n", Tag);
+                   "Error: could not build RDMA ReadReg; Tag=%d\n", Tag);
     break;
   case panNicEvent::WriteReg:
     CmdAddr = Mem->ReadU64(Addr+8);
     TmpData = Mem->ReadU64(Addr+16);
     if( !event->buildWriteReg(Token, Tag, Size, CmdAddr, &TmpData) )
       output.fatal(CALL_INFO, -1,
-                  "Error: could not build RDMA WriteReg; Tag=%d\n", Tag);
+                   "Error: could not build RDMA WriteReg; Tag=%d\n", Tag);
     break;
   case panNicEvent::SingleStep:
     if( !event->buildSingleStep(Token, Tag, (uint16_t)(Size)) )
       output.fatal(CALL_INFO, -1,
-                  "Error: could not build RDMA SingleStep; Tag=%d\n", Tag);
+                   "Error: could not build RDMA SingleStep; Tag=%d\n", Tag);
     break;
   case panNicEvent::SetFuture:
     CmdAddr = Mem->ReadU64(Addr+8);
     if( !event->buildSetFuture(Token, Tag, CmdAddr) )
       output.fatal(CALL_INFO, -1,
-                  "Error: could not build RDMA SetFuture; Tag=%d\n", Tag);
+                   "Error: could not build RDMA SetFuture; Tag=%d\n", Tag);
     break;
   case panNicEvent::RevokeFuture:
     if( !event->buildRevokeFuture(Token, Tag, CmdAddr) )
       output.fatal(CALL_INFO, -1,
-                  "Error: could not build RDMA RevokeFuture; Tag=%d\n", Tag);
+                   "Error: could not build RDMA RevokeFuture; Tag=%d\n", Tag);
     break;
   case panNicEvent::StatusFuture:
     if( !event->buildStatusFuture(Token, Tag, CmdAddr) )
       output.fatal(CALL_INFO, -1,
-                  "Error: could not build RDMA StatusFuture; Tag=%d\n", Tag);
+                   "Error: could not build RDMA StatusFuture; Tag=%d\n", Tag);
     break;
   case panNicEvent::Success:
     if( !event->buildSuccess(Token, Tag) )
       output.fatal(CALL_INFO, -1,
-                  "Error: could not build RDMA Success; Tag=%d\n", Tag);
+                   "Error: could not build RDMA Success; Tag=%d\n", Tag);
     break;
   case panNicEvent::Failed:
     if( !event->buildFailed(Token, Tag) )
       output.fatal(CALL_INFO, -1,
-                  "Error: could not build RDMA Failed; Tag=%d\n", Tag);
+                   "Error: could not build RDMA Failed; Tag=%d\n", Tag);
     break;
   case panNicEvent::BOTW:
     Data = new uint64_t [VarArgs];
@@ -1864,7 +1906,7 @@ bool RevCPU::PANConvertRDMAtoEvent(uint64_t Addr, panNicEvent *event){
     if( !event->buildBOTW(Token, Tag, VarArgs, Data, Offset) ){
       delete[] Data;
       output.fatal(CALL_INFO, -1,
-                  "Error: could not build RDMA BOTW; Tag=%d\n", Tag);
+                   "Error: could not build RDMA BOTW; Tag=%d\n", Tag);
     }
     delete[] Data;
     break;
@@ -2070,9 +2112,9 @@ void RevCPU::ExecPANTest(){
 
       // populate it
       if( !TEvent->buildAsyncGet(LToken,
-                                createTag(),
-                                BASE+(uint64_t)(i*8),
-                                8 ) )
+                                 createTag(),
+                                 BASE+(uint64_t)(i*8),
+                                 8 ) )
         output.fatal(CALL_INFO, -1, "Error: could not create PAN ASYNC_GET command\n" );
 
       // send it
@@ -2113,9 +2155,9 @@ void RevCPU::ExecPANTest(){
 
       // populate it
       if( !TEvent->buildSyncStreamGet(LToken,
-                                createTag(),
-                                BASE+(uint64_t)(i*8),
-                                8 ) )
+                                      createTag(),
+                                      BASE+(uint64_t)(i*8),
+                                      8 ) )
         output.fatal(CALL_INFO, -1, "Error: could not create PAN SYNC_STREAM_GET command\n" );
 
       // send it
@@ -2156,9 +2198,9 @@ void RevCPU::ExecPANTest(){
 
       // populate it
       if( !TEvent->buildAsyncStreamGet(LToken,
-                                createTag(),
-                                BASE+(uint64_t)(i*8),
-                                8 ) )
+                                       createTag(),
+                                       BASE+(uint64_t)(i*8),
+                                       8 ) )
         output.fatal(CALL_INFO, -1, "Error: could not create PAN ASYNC_STREAM_GET command\n" );
 
       // send it
@@ -2266,7 +2308,7 @@ void RevCPU::HandleMemFault(SST::Cycle_t currentCycle){
 
 void RevCPU::HandleRegFault(SST::Cycle_t currentCycle){
   output.verbose(CALL_INFO, 4, 0, "FAULT: Register fault injected at cycle: %" PRIu64 "\n",
-                currentCycle);
+                 currentCycle);
 
   // select a random processor core
   unsigned Core = 0;
@@ -2358,22 +2400,34 @@ bool RevCPU::clockTick( SST::Cycle_t currentCycle ){
   output.verbose(CALL_INFO, 8, 0, "Cycle: %" PRIu64 "\n", currentCycle);
 
   // Execute each enabled core
-  for( unsigned i=0; i<Procs.size(); i++ ){
+  for( size_t i=0; i<Procs.size(); i++ ){
+    // Check if we have more work to assign and places to put it
+    UpdateThreadAssignments(i);
     if( Enabled[i] ){
       if( !Procs[i]->ClockTick(currentCycle) ){
-         if(EnableCoProc && !CoProcs.empty()){
+        if(EnableCoProc && !CoProcs.empty()){
           CoProcs[i]->Teardown();
-         }
-         UpdateCoreStatistics(i);
+        }
+        UpdateCoreStatistics(i);
         Enabled[i] = false;
-      output.verbose(CALL_INFO, 5, 0, "Closing Processor %u at Cycle: %" PRIu64 "\n",
-                     i, currentCycle);
+        output.verbose(CALL_INFO, 5, 0, "Closing Processor %" PRIu64 " at Cycle: %" PRIu64 "\n",
+                       i, currentCycle);
       }
       if(EnableCoProc && !CoProcs[i]->ClockTick(currentCycle)){
-      output.verbose(CALL_INFO, 5, 0, "Closing Co-Processor %u at Cycle: %" PRIu64 "\n",
-                     i, currentCycle);
+        output.verbose(CALL_INFO, 5, 0, "Closing Co-Processor %" PRIu64 " at Cycle: %" PRIu64 "\n",
+                       i, currentCycle);
 
       }
+    }
+
+    // See if any of the threads on this proc changes state
+    CheckForThreadStateChanges(i);
+
+    // See if this proc encountered something that created a new thread
+    CheckForNewThreads(i);
+
+    if( Procs[i]->GetHartUtilization() == 0 ){
+      Enabled[i] = false;
     }
   }
   // Clock the PAN network transport module
@@ -2414,9 +2468,24 @@ bool RevCPU::clockTick( SST::Cycle_t currentCycle ){
   }
 
   // check to see if all the processors are completed
-  for( unsigned i=0; i<Procs.size(); i++ ){
-    if( Enabled[i] )
+  for( size_t i=0; i<Procs.size(); i++ ){
+    if( Enabled[i] ){
       rtn = false;
+    }
+  }
+
+  // If all Procs are disabled (ie. rtn == false at this point)
+  // check to see if there are threads to assign
+  if( ThreadQueue.size() ){
+    rtn = false;
+  } else if ( BlockedThreads.size() ){
+    if( ThreadCanProceed(*BlockedThreads.begin()) ){
+      Threads.at(*(BlockedThreads.begin()))->SetState(ThreadState::READY);
+      Threads.at(*(BlockedThreads.begin()))->SetWaitingToJoinTID(__INVALID_TID__);
+      ThreadQueue.emplace_back(*BlockedThreads.begin());
+      BlockedThreads.erase(BlockedThreads.begin());
+    }
+    rtn = false;
   }
 
   // check to see if the network has any outstanding messages: fixme
@@ -2437,12 +2506,249 @@ bool RevCPU::clockTick( SST::Cycle_t currentCycle ){
     rtn = false;
   }
 
-  if( rtn ){
+  if( rtn && CompletedThreads.size() ){
+    for( unsigned i=0; i<numCores; i++ ){
+      Procs[i]->PrintStatSummary();
+    }
     primaryComponentOKToEndSim();
-    output.verbose(CALL_INFO, 5, 0, "OK to end sim at cycle: %" PRIu64 "\n", currentCycle);
+    output.verbose(CALL_INFO, 5, 0, "OK to end sim at cycle: %" PRIu64 "\n", static_cast<uint64_t>(currentCycle));
+  } else {
+    rtn = false;
   }
 
   return rtn;
 }
 
+
+// Initializes a RevThread object.
+// - Moves it to the 'Threads' map
+// - Adds it's ThreadID to the ThreadQueue to be scheduled
+void RevCPU::InitThread(std::shared_ptr<RevThread>& ThreadToInit){
+
+  auto gp = Loader->GetSymbolAddr("__global_pointer$");
+  ThreadToInit->GetRegFile()->SetX(3, gp);
+  ThreadToInit->GetRegFile()->SetX(8, gp);
+
+  uint32_t TID = ThreadToInit->GetThreadID();
+  // Check if this ThreadID has already been assigned... if so... something has gone horribly wrong
+  // print out all threads
+  auto it = Threads.find(TID);
+  if( it != Threads.end() && it->second->GetState() != ThreadState::START ){
+    std::cout << *Threads.at(TID) << std::endl;
+    output.fatal(CALL_INFO, 99, "Error: ThreadID %" PRIu32 " has already been assigned... this is a bug.\n", TID);
+  }
+  output.verbose(CALL_INFO, 4, 0, "Initializing Thread %" PRIu32 "\n", TID);
+  output.verbose(CALL_INFO, 11, 0, "Thread Information: %s", ThreadToInit->to_string().c_str());
+  ThreadToInit->SetState(ThreadState::READY);
+  Threads.emplace(ThreadToInit->GetThreadID(), ThreadToInit);
+  ThreadQueue.emplace_back(TID);
+}
+
+void RevCPU::AssignThread(uint32_t ThreadID, uint32_t ProcID){
+  output.verbose(CALL_INFO, 4, 0, "Assigning Thread %" PRIu32 " to Processor %" PRIu32 "\n", ThreadID, ProcID);
+  auto Thread = Threads.at(ThreadID);
+
+  // Point the regfile of this thread's LSQ to the Proc's LSQ
+  Thread->GetRegFile()->SetLSQueue( Procs[ProcID]->GetLSQueue() );
+
+  // Point thread's regfile to this proc's MarkLoadComplete
+  Thread->GetRegFile()->SetMarkLoadComplete([proc = Procs[ProcID]](const MemReq& req){ proc->MarkLoadComplete(req); });
+
+  // Put the thread in the Proc's assigned threads list
+  AssignedThreads.at(ProcID).emplace_back(Thread);
+
+  return;
+
+}
+
+// Checks if a thread with a given Thread ID can proceed (used for pthread_join).
+// it does this by seeing if a given thread's WaitingOnTID has completed
+bool RevCPU::ThreadCanProceed(uint32_t TID){
+  bool rtn = false;
+
+  // Get the thread's waiting to join TID
+  uint32_t WaitingOnTID = (Threads.at(TID))->GetWaitingToJoinTID();
+
+  // If the thread is waiting on another thread, check if that thread has completed
+  if( WaitingOnTID != __INVALID_TID__ ){
+    // Check if WaitingOnTID has completed... if so, return = true, else return false
+    output.verbose(CALL_INFO, 4, 0, "Thread %" PRIu32 " is waiting on Thread %u\n", TID, WaitingOnTID);
+
+    // Check if the WaitingOnTID has completed, if not, thread cannot proceed
+    rtn = ( CompletedThreads.find(WaitingOnTID) != CompletedThreads.end() ) ? true : false;
+  }
+  // If the thread is not waiting on another thread, it can proceed
+  else {
+    // Thread is waiting on INVALID_TID (ie. No thread)
+    // so it can proceed
+    rtn = true;
+  }
+
+  return rtn;
+}
+
+// Check if any BlockedThreads have had their counterpart complete execution
+// if so, move its TID to the ThreadQueue
+void RevCPU::CheckBlockedThreads(){
+  // Iterate over all block threads
+  for( auto ThreadID : BlockedThreads ){
+    // Check if the thread can proceed (ie. its WaitingOnTID has completed)
+    if( ThreadCanProceed(ThreadID) ){
+      // Mark thread as ready (no longer blocked)
+      Threads.at(ThreadID)->SetState(ThreadState::READY);
+      // Remove the waiting to join TID
+      Threads.at(ThreadID)->SetWaitingToJoinTID(__INVALID_TID__);
+      // Add the thread to the ThreadQueue
+      ThreadQueue.emplace_back(ThreadID);
+      // Remove the thread from the BlockedThreads list
+      BlockedThreads.erase(ThreadID);
+    } else {
+      continue;
+    }
+  }
+  return;
+}
+
+// ----------------------------------
+// We need to initialize the x10 register to include the value of ARGC
+// This is >= 1 (the executable name is always included)
+// We also need to initialize the ARGV pointer to the value
+// of the ARGV base pointer in memory which is currently set to the
+// program header region.  When we come out of reset, this is StackTop+60 bytes
+// ----------------------------------
+void RevCPU::SetupArgs(uint32_t ThreadIDToSetup, RevFeature* feature){
+  auto Argv = Opts->GetArgv();
+  // setup argc
+  Threads.at(ThreadIDToSetup)->GetRegFile()->SetX(10, Argv.size());
+  Threads.at(ThreadIDToSetup)->GetRegFile()->SetX(11, Mem->GetStackTop() + 60);
+  return;
+}
+
+// Checks core 'i' to see if it has any available harts to assign work to
+// if it does and there is work to assign (ie. ThreadQueue is not empty)
+// assign it and enable the processor if not already enabled.
+void RevCPU::UpdateThreadAssignments(uint32_t ProcID){
+  // Get utilization info
+  double Util = Procs[ProcID]->GetHartUtilization();
+  if( Util > 0.0 ){
+    output.verbose(CALL_INFO, 10, 0, "Core %" PRIu32 " utilization: %.2f%%\n", ProcID, Util);
+  }
+  // Check if we have room to schedule another thread
+  if( Util < 100  ){
+    output.verbose(CALL_INFO, 10, 0, "Core %" PRIu32 " utilization: %.2f%%\n", ProcID, Util);
+    // We can schedule another thread
+    // Check if we have any threads to schedule
+    // TODO:
+    if( ThreadQueue.size() ){
+      // Add to this proc's thread list
+      Threads.at(ThreadQueue.front())->SetState(ThreadState::RUNNING);
+      AssignThread(ThreadQueue.front(), ProcID);
+      // AssignedThreads.at(ProcID).emplace_back(Threads.at(ThreadQueue.front()));
+      // output.verbose(CALL_INFO, 6, 1, "Assigning Thread %u to Core %u\n", ThreadQueue.front(), ProcID);
+      // Remove from thread queue
+      ThreadQueue.erase(ThreadQueue.begin());
+      // If this Proc was previously disabled, enable it
+      // if( !Enabled[i] ){ Enabled[i] = true; }
+      Enabled[ProcID] = true;
+    }
+  } // Utilization is 100%, so change nothing
+  return;
+}
+
+
+// Checks for state changes in the threads of a given processor index 'i'
+// and handle appropriately
+void RevCPU::CheckForThreadStateChanges(uint32_t ProcID){
+  // Handle any thread state changes for this core
+  std::bitset<_REV_HART_COUNT_> Changes = Procs[ProcID]->GetThreadStateChanges();
+
+  // Check if any threads on Procs[ProcID]] have changed state
+  if( Changes.any() ){
+    for( size_t HartID=0; HartID<Changes.size(); HartID++ ){
+      // Only check the ones that have changed
+      if( Changes[HartID] ){
+        std::shared_ptr<RevThread>& Thread = AssignedThreads.at(ProcID).at(HartID);
+
+        // Handle the thread that changed state based on the new state
+        switch ( Thread->GetState() ) {
+        case ThreadState::DONE:
+          // This thread has completed execution
+          // We need to:
+          // 1. Remove it from the AssignedThreads list
+          // 2. Move its ThreadID to the CompletedThreads list
+          output.verbose(CALL_INFO, 8, 0, "Thread %" PRIu32 " on Core %" PRIu32 " is DONE\n", Thread->GetThreadID(), ProcID);
+          AssignedThreads.at(ProcID).erase(AssignedThreads.at(ProcID).begin()+HartID);
+          CompletedThreads.emplace(Thread->GetThreadID());
+          break;
+        case ThreadState::BLOCKED:
+          // This thread is blocked (currently only caused by a rev_pthread_join)
+          // We need to:
+          // 1. Check if the thread it is waiting on has already completed
+          // 2. If it has... Thread can resume execution
+          // 3. If not, thread remains blocked
+          //    3a. Move its ThreadID to the BlockedThreads list
+          //    3b. Remove it from the AssignedThreads lis
+          output.verbose(CALL_INFO, 8, 0, "Thread %" PRIu32 "on Core %" PRIu32 " is BLOCKED\n", Thread->GetThreadID(), ProcID);
+          // -- 1.
+          if( ThreadCanProceed(Thread->GetThreadID()) ){
+            // -- 2.
+            output.verbose(CALL_INFO, 8, 0, "Thread %" PRIu32 " on Core %" PRIu32 " was waiting on thread %u which has already completed so it can proceed\n",
+                           Thread->GetThreadID(), ProcID, Thread->GetWaitingToJoinTID());
+            // Continue executing thread on same Core
+            Thread->SetState(ThreadState::RUNNING);
+          }
+          else { // -- 3.
+            output.verbose(CALL_INFO, 8, 0, "Thread %" PRIu32 " on Core %" PRIu32 " was waiting on thread %u which has not yet completed so it remains blocked\n",
+                           Thread->GetThreadID(), ProcID, Thread->GetWaitingToJoinTID());
+            Thread->SetState(ThreadState::BLOCKED);
+            // -- 3a.
+            BlockedThreads.emplace(Thread->GetThreadID());
+            // -- 3b.
+            AssignedThreads.at(ProcID).erase(AssignedThreads.at(ProcID).begin()+HartID);
+          }
+          break;
+        case ThreadState::START: // Should never happen
+          output.fatal(CALL_INFO, 99, "Error: Thread %" PRIu32 " on Core %" PRIu32 " is assigned but is in START state... This is a bug\n",
+                       Thread->GetThreadID(), ProcID);
+          break;
+        case ThreadState::RUNNING:
+          output.verbose(CALL_INFO, 11, 0, "Thread %" PRIu32 " on Core %" PRIu32 " is RUNNING\n", Thread->GetThreadID(), ProcID);
+          break;
+        case ThreadState::READY:
+          // If this happens we are not setting state when assigning thread somewhere
+          output.fatal(CALL_INFO, 99, "Error: Thread %" PRIu32 " on Core %" PRIu32 " is assigned but is in START state... This is a bug\n",
+                       Thread->GetThreadID(), ProcID);
+          break;
+        default: // Should DEFINITELY never happen
+          output.fatal(CALL_INFO, 99, "Error: Thread %" PRIu32 " on Core %" PRIu32 " is in an unknown state... This is a bug\n",
+                       Thread->GetThreadID(), ProcID);
+          break;
+        }
+        // State change has been handled, so clear the bit
+        Changes[HartID] = false;
+      }
+      else {
+        // This thread didn't experience a state change
+        continue;
+      }
+    }
+    // Clear the changes for this core
+    Procs[ProcID]->ClearThreadStateChanges();
+  }
+  return;
+}
+
+// Checks for new threads that may have been added to a given processor's NewThreadInfo
+void RevCPU::CheckForNewThreads(uint32_t i){
+  // Check for new threads
+  if( !Procs[i]->GetNewThreadInfo().empty() ){
+    output.verbose(CALL_INFO, 8, 0, "Core %" PRIu32 " has new threads\n", i);
+    // There are new thread(s) to create
+    for( size_t j=0; j<Procs[i]->GetNewThreadInfo().size(); j++ ){
+      auto NewThread = Procs[i]->NewThreadInfo.front();
+      Procs[i]->NewThreadInfo.pop();
+      InitThread(NewThread);
+    }
+  }
+}
 // EOF
