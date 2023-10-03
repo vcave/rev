@@ -2,7 +2,7 @@
 
 #Build the test
 make clean && make
-REV_SST_CONFIG=${REV_SST_CONFIG-./rev-test-amoadd_c_memh.py}
+REV_SST_CONFIG=${REV_SST_CONFIG:-./rev-test-amoadd_c_memh.py}
 REV_EXE=amoadd_c_memh.exe
 
 # Check that the exec was built...

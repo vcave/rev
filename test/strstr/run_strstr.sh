@@ -2,7 +2,7 @@
 
 #Build the test
 make clean && make
-REV_SST_CONFIG=${REV_SST_CONFIG-./rev-strstr.py}
+REV_SST_CONFIG=${REV_SST_CONFIG:-./rev-strstr.py}
 REV_EXE=strstr.exe
 
 # Check that the exec was built...

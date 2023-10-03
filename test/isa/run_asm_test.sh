@@ -2,7 +2,7 @@
 
 #Build the test
 make
-REV_SST_CONFIG=${REV_SST_CONFIG-./rev-isa-test.py}
+REV_SST_CONFIG=${REV_SST_CONFIG:-./rev-isa-test.py}
 REV_EXE=$RVASM.exe
 
 # Check that the exec was built...

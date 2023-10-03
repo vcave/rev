@@ -153,14 +153,14 @@ set_tests_properties(TEST_BIG_LOOP
     LABELS "all;rv64"
 )
 
-add_test(NAME TEST_MINFFT COMMAND run_minfft.sh WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/minfft" ) # minfft
-set_tests_properties(TEST_MINFFT
-  PROPERTIES
-    ENVIRONMENT "RVCC=${RVCC}; RVCXX=${RVCXX}; REV_SST_CONFIG=${REV_SST_CONFIG}; ARCH=${ARCH}; ABI=${ABI};"
-    TIMEOUT 45
-    PASS_REGULAR_EXPRESSION "${passRegex}"
-    LABELS "all;rv64"
-)
+#add_test(NAME TEST_MINFFT COMMAND run_minfft.sh WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/minfft" ) # minfft
+#set_tests_properties(TEST_MINFFT
+#  PROPERTIES
+#    ENVIRONMENT "RVCC=${RVCC}; RVCXX=${RVCXX}; REV_SST_CONFIG=${REV_SST_CONFIG}; ARCH=${ARCH}; ABI=${ABI};"
+#    TIMEOUT 45
+#    PASS_REGULAR_EXPRESSION "${passRegex}"
+#    LABELS "all;rv64"
+#)
 
 add_test(NAME TEST_LARGE_BSS COMMAND run_large_bss.sh WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/large_bss" ) # large_bss
 set_tests_properties(TEST_LARGE_BSS

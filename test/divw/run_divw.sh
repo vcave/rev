@@ -2,7 +2,7 @@
 
 #Build the test
 make clean && make
-REV_SST_CONFIG=${REV_SST_CONFIG-./rev-divw.py}
+REV_SST_CONFIG=${REV_SST_CONFIG:-./rev-divw.py}
 REV_EXE=divw.exe
 
 # Check that the exec was built...

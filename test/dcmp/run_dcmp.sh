@@ -2,7 +2,7 @@
 
 #Build the test
 make clean && make
-REV_SST_CONFIG=${REV_SST_CONFIG-./rev-dcmp.py}
+REV_SST_CONFIG=${REV_SST_CONFIG:-./rev-dcmp.py}
 REV_EXE=dcmp.exe
 
 # Check that the exec was built...

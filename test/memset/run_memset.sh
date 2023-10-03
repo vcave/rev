@@ -2,7 +2,7 @@
 
 #Build the test
 make clean && make
-REV_SST_CONFIG=${REV_SST_CONFIG-./memset.py}
+REV_SST_CONFIG=${REV_SST_CONFIG:-./memset.py}
 REV_EXE=memset.exe
 
 # Check that the exec was built...

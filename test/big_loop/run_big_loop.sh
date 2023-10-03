@@ -2,7 +2,7 @@
 
 #Build the test
 make clean && make
-REV_SST_CONFIG=${REV_SST_CONFIG-./big_loop.py}
+REV_SST_CONFIG=${REV_SST_CONFIG:-./big_loop.py}
 REV_EXE=big_loop.exe
 
 # Check that the exec was built...

@@ -2,7 +2,7 @@
 
 #Build the test
 make clean && make
-REV_SST_CONFIG=${REV_SST_CONFIG-./rev-test-argc.py}
+REV_SST_CONFIG=${REV_SST_CONFIG:-./rev-test-argc.py}
 REV_EXE=argc.exe
 
 # Check that the exec was built...
